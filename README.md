@@ -1,7 +1,9 @@
 # Rhino Plugin for generating VR movement guide
 
 About:
-This code base is an extension of a concept project I worked on in 2021. If you are interested in more details go here.
+This code base is an extension of a concept project I worked on in 2021. If you are interested in more details go [here](https://github.com/harrismawardi/generate-vr-movement-guide/blob/0474afcdc798257eb945cdbee4f0d151da4fc2dc/A%20System%20For%20Mapping%20Yoga.pdf).
+
+
 
 Features:
 - User prompt for selecting the start point of the movement
