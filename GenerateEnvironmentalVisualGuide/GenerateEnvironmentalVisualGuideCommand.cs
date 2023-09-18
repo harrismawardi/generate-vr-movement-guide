@@ -3,12 +3,11 @@ using Rhino.Commands;
 using Rhino.DocObjects;
 using Rhino.Geometry;
 using Rhino.Input;
-using Rhino.Input.Custom;
 using System;
-using System.Collections.Generic;
-using System.Security.Cryptography.X509Certificates;
 using GenerateEnvironmentalVisualGuide.Helpers;
 using GenerateEnvironmentalVisualGuide.Models;
+using System.Runtime.Serialization.Json;
+using System.Drawing;
 
 namespace GenerateEnvironmentalVisualGuide
 {
@@ -27,11 +26,18 @@ namespace GenerateEnvironmentalVisualGuide
 
         protected override Result RunCommand(RhinoDoc doc, RunMode mode)
         {
+            doc.Views.EnableRedraw(true, true, true);
+            double viewingAngle = Math.PI / 3; //60 degrees
             try
             {
                 //Get start point for movement
                 Point3d startPoint;
                 Result pointResult = RhinoGet.GetPoint("Select starting view point.", false, out startPoint);
+                if (pointResult != Result.Success)
+                {
+                    RhinoApp.WriteLine("An error occurred selecting movement start point.");
+                    return pointResult;
+                }
 
                 //Get source geometry to use for guide geometry generation
                 ObjRef sourceGeometryObjRef;
@@ -41,28 +47,29 @@ namespace GenerateEnvironmentalVisualGuide
                     RhinoApp.WriteLine("An error occurred selecting source geometry.");
                     return solidResult;
                 }
-
-                //Box sourceGeometry;
-                //Result solidResult = RhinoGet.GetBox(out sourceGeometry);
-                
-                RhinoApp.WriteLine("did we get here");
-
+               
                 //Get Boundary Representation to enable geometry manipulation
                 Brep sourceGeometryBrep = sourceGeometryObjRef.Brep();
 
-                Camera[] viewCoordinates = Helper.GetCameraMovementDetails();
+                //Layers to organise scaffold geometries (e.g. cutting planes) and guide geometries
+                int scaffoldLayerIndex = Helper.generateLayer("Scaffold Objects", Color.Aqua, doc);
+                int guideLayerIndex = Helper.generateLayer("Movement Guide", Color.Orange, doc);
 
+                Camera[] viewCoordinates = Helper.GetCameraMovementDetails();
                 foreach (Camera camera in viewCoordinates)
                 {
-                    double viewingAngle = Math.PI / 3; //60 degrees
-                    Surface[] cuttingSurfaces =  Helper.GetCuttingSurfacesFromCameraPositioning(camera,viewingAngle);
+                    Surface[] cuttingSurfaces =  Helper.GetCuttingSurfacesFromCameraPositioning(camera, startPoint, viewingAngle);
                     foreach (Surface surfaceRepresentation in cuttingSurfaces)
                     {
-
-                        doc.Objects.AddSurface(surfaceRepresentation);
+                        var scaffoldOa = new ObjectAttributes();
+                        scaffoldOa.LayerIndex = scaffoldLayerIndex;
+                        doc.Objects.AddSurface(surfaceRepresentation, scaffoldOa);
                     }
+                    
                     Brep slicedGeometry = Helper.GetGeometrySlice(sourceGeometryBrep, cuttingSurfaces, doc.ModelAbsoluteTolerance);
-
+                    var guideOa = new ObjectAttributes();
+                    guideOa.LayerIndex = guideLayerIndex;
+                    doc.Objects.AddBrep(slicedGeometry, guideOa);
                 }
 
                 RhinoApp.WriteLine("Movement guide generated successfully.");
@@ -71,7 +78,6 @@ namespace GenerateEnvironmentalVisualGuide
             } catch (Exception ex)
             {
                 RhinoApp.WriteLine("Exception occurred: " + ex.Message);
-                doc.Views.EnableRedraw(true, true, true);
                 doc.Views.Redraw();
                 return Result.Failure;
             }

@@ -1,15 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Drawing;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
+using System.Runtime.Serialization.Json;
 using GenerateEnvironmentalVisualGuide.Models;
-using Rhino;
 using Rhino.DocObjects;
 using Rhino.Geometry;
-using Rhino.Runtime;
+using Rhino;
 
 namespace GenerateEnvironmentalVisualGuide.Helpers
 {
@@ -19,34 +15,30 @@ namespace GenerateEnvironmentalVisualGuide.Helpers
         public static Camera[] GetCameraMovementDetails()
         {
             //todo read from file the coordinates
-            //create list
-     
-
             Array[] arr = new Array[1]; //todo replace with file reading
             Camera[] cameraMovementDetails = new Camera[arr.Length];
 
             for (int i = 0; i < arr.Length; i++)
             {
-                Point3d position = Point3d.Origin; //todo replace with reading from array
-                double yaw = Math.PI / 2; //todo replace with reading from array
-                double pitch = Math.PI / 6;
-                double roll = Math.PI / 3;
-
+                //todo refactor hardcoding with values from file
+                Point3d position = Point3d.Origin;
+                double yaw = 0; 
+                double pitch = 0;
+                double roll = 0;
                 Quaternion orientation =  Quaternion.Rotation(pitch, Vector3d.XAxis) * Quaternion.Rotation(roll, Vector3d.YAxis) * Quaternion.Rotation(yaw, Vector3d.ZAxis);
 
                 Camera camera = new Camera.Builder()
                     .Position(position)
                     .Rotation(orientation)
                     .Build();
-
                 cameraMovementDetails[i] = camera;
             }
             return cameraMovementDetails;
         }
 
-        public static Surface[] GetCuttingSurfacesFromCameraPositioning(Camera camera, double viewingAngle)
+        public static Surface[] GetCuttingSurfacesFromCameraPositioning(Camera camera, Point3d startPoint, double viewingAngle)
         {
-            Point3d position = camera.Position;
+            Point3d position = Point3d.Add(camera.Position, startPoint); 
             Transform matrix = camera.Rotation.MatrixForm();
 
             //The second and third array are the relative y and z axis of the camera.
@@ -55,18 +47,17 @@ namespace GenerateEnvironmentalVisualGuide.Helpers
 
             var plane1 = new Plane(position, xAxis, yAxis);
             var plane2 = new Plane(position, xAxis, yAxis);
-
-            RhinoApp.WriteLine("cutting plane length:" + plane1.XAxis.Length);
-
+            //todo refactor to add rotation to Vector3D constructors instead
             plane1.Rotate(viewingAngle / 2, xAxis);
             plane2.Rotate(-viewingAngle / 2, xAxis);
-
             var surface1 = new PlaneSurface(plane1,new Interval(0, 1), new Interval(0, 1));
             var surface2 = new PlaneSurface(plane2,new Interval(0, 1), new Interval(0, 1));
 
-            //temporary measure 
-            surface1.Scale(1000);
-            surface2.Scale(1000);
+            // Scale the surfaces (temporary measure)
+            double scaleFactor = 1000;
+            Transform scaleTransform = Transform.Scale(position, scaleFactor);
+            surface1.Transform(scaleTransform);
+            surface2.Transform(scaleTransform);
 
             var arr = new Surface[2];
             arr[0] = surface1;
@@ -77,16 +68,21 @@ namespace GenerateEnvironmentalVisualGuide.Helpers
 
         public static Brep GetGeometrySlice(Brep sourceBrep, Surface[] cuttingPlanes, double tolerance)
         {
-            BoundingBox boundingBox = sourceBrep.GetBoundingBox(false);
-            //Brep cuttingBrep1 = PlaneSurface.CreateThroughBox(cuttingPlanes[0], boundingBox).ToBrep();
-            //Brep cuttingBrep2 = PlaneSurface.CreateThroughBox(cuttingPlanes[1], boundingBox).ToBrep();
             Brep[] splitGeometries1 = sourceBrep.Split(cuttingPlanes[0].ToBrep(), tolerance);
             if (splitGeometries1.Length == 0)
             {
-                throw new Exception("source geometry not split");
+                throw new Exception("Exception occurred: Failed to split source geometry.");
             }
-            Brep[] splitGeometries2 = splitGeometries1[1].Split(cuttingPlanes[1].ToBrep(), tolerance); ;
-            return splitGeometries2[0]; //TODO: check what needs to be returned
+            Brep[] splitGeometries2 = splitGeometries1[1].Split(cuttingPlanes[1].ToBrep(), tolerance);
+            return splitGeometries1.Length > 0 ? splitGeometries2[1] : splitGeometries1[1];
+        }
+
+        public static int generateLayer(string name, Color color, RhinoDoc doc)
+        {
+            Layer layer = new Layer();
+            layer.Name = name;
+            layer.Color = color;
+            return doc.Layers.Add(layer);
         }
 
     }
